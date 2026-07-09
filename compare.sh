@@ -10,6 +10,7 @@ Run side-by-side comparison test of Prequal vs Round-Robin.
 
 OPTIONS:
     -d, --duration SEC      Duration per load level (default: 120)
+    -s, --step NUM          Run only a specific step from 1 to 9 (e.g. 1 for 75%)
     -h, --help             Show this help message
 
 DESCRIPTION:
@@ -56,11 +57,16 @@ check_services() {
 }
 
 DURATION=120
+STEP=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -d|--duration)
             DURATION="$2"
+            shift 2
+            ;;
+        -s|--step)
+            STEP="$2"
             shift 2
             ;;
         -h|--help)
@@ -86,6 +92,8 @@ echo "========================================="
 echo "Duration per level: ${DURATION}s"
 echo ""
 
+mkdir -p metrics
+
 echo "Determining baseline capacity..."
 echo "Running calibration test (30s on Prequal)..."
 BASELINE=$(hey -z 30s -q 100 http://localhost:8080 2>&1 | grep "Requests/sec:" | awk '{print $2}')
@@ -96,6 +104,10 @@ LEVELS=(0.75 0.83 0.93 1.03 1.14 1.27 1.41 1.57 1.74)
 LEVEL_NAMES=("75%" "83%" "93%" "103%" "114%" "127%" "141%" "157%" "174%")
 
 for i in "${!LEVELS[@]}"; do
+    if [ -n "$STEP" ] && [ "$((i+1))" -ne "$STEP" ]; then
+        continue
+    fi
+
     level=${LEVELS[$i]}
     name=${LEVEL_NAMES[$i]}
     qps=$(echo "$BASELINE * $level" | bc -l | awk '{printf "%.0f", $1}')
@@ -104,26 +116,28 @@ for i in "${!LEVELS[@]}"; do
     echo "Step $((i+1))/9: Load Level $name"
     echo "Target: ${qps} req/sec per algorithm"
     echo "========================================="
+    echo "Calculated Target QPS: $qps"
     echo ""
 
-    echo "Starting load test on both algorithms..."
+    echo "1/2: Testing Prequal..."
+    hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/prequal_${i}.txt 2>&1
 
-    hey -z ${DURATION}s -q $qps http://localhost:8080 > /tmp/prequal_${i}.txt 2>&1 &
-    PID_PREQUAL=$!
+    echo "Waiting 5 seconds before switching..."
+    sleep 5
 
-    hey -z ${DURATION}s -q $qps http://localhost:8081 > /tmp/rr_${i}.txt 2>&1 &
-    PID_RR=$!
+    echo "2/2: Testing Round-Robin..."
+    hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/rr_${i}.txt 2>&1
 
-    wait $PID_PREQUAL
-    wait $PID_RR
+    echo "Waiting 5 seconds before next level..."
+    sleep 5
 
     echo ""
     echo "--- Prequal Results ---"
-    grep -E "Requests/sec:|p50|p99|p99.9" /tmp/prequal_${i}.txt | head -5
+    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/prequal_${i}.txt | head -5
 
     echo ""
     echo "--- Round-Robin Results ---"
-    grep -E "Requests/sec:|p50|p99|p99.9" /tmp/rr_${i}.txt | head -5
+    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/rr_${i}.txt | head -5
 
     echo ""
     echo "Completed step $((i+1))/9"
@@ -145,4 +159,4 @@ echo "  http://localhost:3001"
 echo ""
 echo "Use the algorithm dropdown to filter or show both"
 echo ""
-echo "Detailed results saved in /tmp/prequal_*.txt and /tmp/rr_*.txt"
+echo "Detailed results saved in ./metrics/prequal_*.txt and ./metrics/rr_*.txt"
