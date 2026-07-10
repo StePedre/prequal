@@ -9,9 +9,9 @@ Usage: $0 [OPTIONS]
 Run side-by-side comparison test of Prequal vs Round-Robin.
 
 OPTIONS:
-    -d, --duration SEC      Duration per load level (default: 120)
+    -d, --duration SEC      Duration per load level (default: 300)
     -s, --step NUM          Run only a specific step from 1 to 9 (e.g. 1 for 75%)
-    -h, --help             Show this help message
+    -h, --help              Show this help message
 
 DESCRIPTION:
     Tests both algorithms simultaneously by running load against both
@@ -29,6 +29,7 @@ REQUIREMENTS:
 
 EXAMPLE:
     ./compare.sh --duration 120
+    ./compare.sh --step 1
 
 EOF
 }
@@ -56,7 +57,7 @@ check_services() {
     echo "Both load balancers are running"
 }
 
-DURATION=120
+DURATION=300
 STEP=""
 
 while [[ $# -gt 0 ]]; do
@@ -122,24 +123,24 @@ for i in "${!LEVELS[@]}"; do
     echo ""
 
     echo "1/2: Testing Round-Robin..."
-    hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/rr_${i}.txt 2>&1
+    hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/base/rr_base_${i}.txt 2>&1
 
     echo "Waiting 5 seconds before switching..."
     sleep 5
 
     echo "2/2: Testing Prequal..."
-    hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/prequal_${i}.txt 2>&1
+    hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/base/pq_base_${i}.txt 2>&1
 
     echo "Waiting 5 seconds before next level..."
     sleep 5
 
     echo ""
     echo "--- Round-Robin Results ---"
-    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/rr_${i}.txt | head -5
+    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/base/rr_base_${i}.txt | head -5
 
     echo ""
     echo "--- Prequal Results ---"
-    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/prequal_${i}.txt | head -5
+    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/base/pq_base_${i}.txt | head -5
 
     echo ""
     echo "Completed step $((i+1))/9"
@@ -161,4 +162,4 @@ echo "  http://localhost:3001"
 echo ""
 echo "Use the algorithm dropdown to filter or show both"
 echo ""
-echo "Detailed results saved in ./metrics/rr_*.txt and ./metrics/prequal_*.txt"
+echo "Detailed results saved in ./metrics/base/rr_base_*.txt and ./metrics/base/pq_base_*.txt"
