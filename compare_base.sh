@@ -93,7 +93,7 @@ echo "========================================="
 echo "Duration per level: ${DURATION}s"
 echo ""
 
-mkdir -p metrics
+mkdir -p metrics/base/
 
 echo "Determining baseline capacity..."
 echo "Running calibration test (30s on Prequal)..."
