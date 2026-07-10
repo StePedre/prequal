@@ -106,8 +106,8 @@ echo ""
 echo "Wait 30s to let the servers cool down"
 sleep 30
 
-LEVELS=(0.25, 0.50, 0.75 0.83 0.93 1.03)
-LEVEL_NAMES=("25%", "50%", "75%" "83%" "93%" "103%")
+LEVELS=(0.25 0.50 0.75 0.83 0.93 1.03)
+LEVEL_NAMES=("25%" "50%" "75%" "83%" "93%" "103%")
 
 for i in "${!LEVELS[@]}"; do
     if [ -n "$STEP" ] && [ "$((i+1))" -ne "$STEP" ]; then
