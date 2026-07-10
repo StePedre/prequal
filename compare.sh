@@ -99,6 +99,8 @@ echo "Running calibration test (30s on Prequal)..."
 BASELINE=$(hey -z 30s -q 100 http://localhost:8080 2>&1 | grep "Requests/sec:" | awk '{print $2}')
 echo "Baseline capacity: ${BASELINE} req/sec"
 echo ""
+echo "Wait 30s to let the servers cool down"
+sleep 30
 
 LEVELS=(0.75 0.83 0.93 1.03 1.14 1.27 1.41 1.57 1.74)
 LEVEL_NAMES=("75%" "83%" "93%" "103%" "114%" "127%" "141%" "157%" "174%")
@@ -119,25 +121,25 @@ for i in "${!LEVELS[@]}"; do
     echo "Calculated Target QPS: $qps"
     echo ""
 
-    echo "1/2: Testing Prequal..."
-    hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/prequal_${i}.txt 2>&1
+    echo "1/2: Testing Round-Robin..."
+    hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/rr_${i}.txt 2>&1
 
     echo "Waiting 5 seconds before switching..."
     sleep 5
 
-    echo "2/2: Testing Round-Robin..."
-    hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/rr_${i}.txt 2>&1
+    echo "2/2: Testing Prequal..."
+    hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/prequal_${i}.txt 2>&1
 
     echo "Waiting 5 seconds before next level..."
     sleep 5
 
     echo ""
-    echo "--- Prequal Results ---"
-    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/prequal_${i}.txt | head -5
-
-    echo ""
     echo "--- Round-Robin Results ---"
     grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/rr_${i}.txt | head -5
+
+    echo ""
+    echo "--- Prequal Results ---"
+    grep -E "Requests/sec:|p50|p99|p99.9" ./metrics/prequal_${i}.txt | head -5
 
     echo ""
     echo "Completed step $((i+1))/9"
@@ -159,4 +161,4 @@ echo "  http://localhost:3001"
 echo ""
 echo "Use the algorithm dropdown to filter or show both"
 echo ""
-echo "Detailed results saved in ./metrics/prequal_*.txt and ./metrics/rr_*.txt"
+echo "Detailed results saved in ./metrics/rr_*.txt and ./metrics/prequal_*.txt"

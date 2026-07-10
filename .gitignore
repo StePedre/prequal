@@ -26,8 +26,10 @@ go.work.sum
 # env file
 .env
 
-
 # Backend
 backend/backend
 backend/go.mod
 backend/go.sum
+
+# Metrics
+metrics/
