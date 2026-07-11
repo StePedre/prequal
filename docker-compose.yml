@@ -66,6 +66,30 @@ services:
       - CPU_LOAD=0
     cpus: 1.0
 
+  server4:
+    build: ./backend
+    container_name: server4
+    profiles: ["dynamic"]
+    networks:
+      - loadbalancer-net
+    environment:
+      - SERVER_ID=server4
+      - PORT=80
+      - CPU_LOAD=0
+    cpus: 1.0
+
+  server5:
+    build: ./backend
+    container_name: server5
+    profiles: ["dynamic"]
+    networks:
+      - loadbalancer-net
+    environment:
+      - SERVER_ID=server5
+      - PORT=80
+      - CPU_LOAD=0
+    cpus: 1.0
+
   prometheus:
     image: prom/prometheus
     ports:
