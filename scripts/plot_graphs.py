@@ -98,6 +98,9 @@ def draw_combined_backgrounds(ax, rr_series, pq_series):
                 i += 2
             else:
                 i += 1
+                
+        return blocks[0][1], blocks[-1][2]
+    return None, None
 
 
 def plot_latency(path, output_path):
@@ -111,6 +114,13 @@ def plot_latency(path, output_path):
             idx = np.where(streak == 5)[0][0] - 4
             first_rr_time = df_lat.index[idx]
             df_lat = df_lat[df_lat.index >= first_rr_time]
+            
+    if 'prequal p50' in df_lat.columns:
+        pq_notna = df_lat['prequal p50'].notna()
+        if pq_notna.any():
+            import numpy as np
+            last_pq_time = df_lat.index[np.where(pq_notna)[0][-1]]
+            df_lat = df_lat[df_lat.index <= last_pq_time]
 
     fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -133,7 +143,10 @@ def plot_latency(path, output_path):
 
     rr_lat = df_lat['roundrobin p50'] if 'roundrobin p50' in df_lat.columns else pd.Series(dtype=float)
     pq_lat = df_lat['prequal p50'] if 'prequal p50' in df_lat.columns else pd.Series(dtype=float)
-    draw_combined_backgrounds(ax, rr_lat, pq_lat)
+    start_t, end_t = draw_combined_backgrounds(ax, rr_lat, pq_lat)
+    
+    if start_t and end_t:
+        ax.set_xlim(start_t, end_t)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.set_title(f"Request Latency - {os.path.basename(path)}", fontsize=14, fontweight='bold')
@@ -162,6 +175,12 @@ def plot_rif(path, output_path):
         idx = np.where(streak == 5)[0][0] - 4
         first_rr_time = df_rif.index[idx]
         df_rif = df_rif[df_rif.index >= first_rr_time]
+        
+    pq_active_temp = df_rif[cols_prequal].sum(axis=1) > 0
+    if pq_active_temp.any():
+        import numpy as np
+        last_pq_time = df_rif.index[np.where(pq_active_temp)[0][-1]]
+        df_rif = df_rif[df_rif.index <= last_pq_time]
 
     fig, ax = plt.subplots(figsize=(12, 6))
     colors_rr = ['#d62728', '#ff7f0e', '#bcbd22']
@@ -180,7 +199,10 @@ def plot_rif(path, output_path):
 
     rr_rif = df_rif[cols_rr[0]].where(rr_active).dropna()
     pq_rif = df_rif[cols_prequal[0]].where(pq_active).dropna()
-    draw_combined_backgrounds(ax, rr_rif, pq_rif)
+    start_t, end_t = draw_combined_backgrounds(ax, rr_rif, pq_rif)
+    
+    if start_t and end_t:
+        ax.set_xlim(start_t, end_t)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.set_title(f"Requests In Flight (RIF) - {os.path.basename(path)}", fontsize=14, fontweight='bold')
