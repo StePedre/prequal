@@ -56,11 +56,10 @@ echo "Phase 3 (RR): 2 servers active. Waiting for completion (4 minutes)..."
 wait $PID_RR
 echo "Round Robin completed!"
 
-# --- RESET ENVIRONMENT ---
+# --- RESET environment ---
 echo ""
-echo "Restoring the environment for Prequal..."
-docker start server1
-sleep 10 # Time to let the healthy server come back up and running
+docker restart server1 server2 server3
+sleep 15
 
 # PREQUAL phase
 echo ""
