@@ -1,0 +1,60 @@
+#!/bin/bash
+
+set -e
+
+DURATION=360
+TARGET_LOAD=1.27
+
+echo "========================================="
+echo " Dynamic Experiment 1: Server Kill"
+echo "========================================="
+
+mkdir -p metrics/dynamic
+
+echo "Determining baseline capacity..."
+BASELINE=$(hey -z 30s -q 100 http://localhost:8080 2>&1 | grep "Requests/sec:" | awk '{print $2}')
+
+# ROUND ROBIN phase
+echo ""
+echo "=== ROUND ROBIN TEST (6 Minutes) ==="
+QPS_TARGET=$(echo "$BASELINE * $TARGET_LOAD" | bc -l | awk '{printf "%.0f", $1}')
+echo "QPS: ${QPS_TARGET} req/sec"
+
+hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8081 > ./metrics/dynamic/rr_dyn_kill.txt 2>&1 &
+PID_RR=$!
+
+echo "Phase 1 (RR): 3 servers active. Waiting 2 minutes..."
+sleep 120
+
+echo "Phase 2 (RR): Killing server1..."
+docker stop server1
+
+echo "Phase 3 (RR): 2 servers active. Waiting for completion (4 minutes)..."
+wait $PID_RR
+echo "Round Robin completed!"
+
+# --- RESET ENVIRONMENT ---
+echo ""
+echo "Restoring the environment for Prequal..."
+docker start server1
+sleep 10 # Time to let the healthy server come back up and running
+
+# PREQUAL phase
+echo ""
+echo "=== PREQUAL TEST (6 Minutes) ==="
+hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8080 > ./metrics/dynamic/pq_dyn_kill.txt 2>&1 &
+PID_PQ=$!
+
+echo "Phase 1 (PQ): 3 servers active. Waiting 2 minutes..."
+sleep 120
+
+echo "Phase 2 (PQ): Killing server1..."
+docker stop server1
+
+echo "Phase 3 (PQ): 2 servers active. Waiting for completion (4 minutes)..."
+wait $PID_PQ
+echo "Prequal completed!"
+
+echo ""
+echo "Dynamic Experiment 1 Completed!"
+echo "Remember to run 'docker start server1' before the next experiment."
