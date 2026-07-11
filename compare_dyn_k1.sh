@@ -2,6 +2,29 @@
 
 set -e
 
+check_hey() {
+    if ! command -v hey &> /dev/null; then
+        echo "Error: hey is not installed"
+        echo "Install with: go install github.com/rakyll/hey@latest"
+        exit 1
+    fi
+}
+
+check_services() {
+    echo "Checking services..."
+    if ! curl -s http://localhost:8080/health > /dev/null 2>&1; then
+        echo "Error: Prequal load balancer not responding on port 8080"
+        echo "Start services with: docker-compose up -d"
+        exit 1
+    fi
+    if ! curl -s http://localhost:8081/health > /dev/null 2>&1; then
+        echo "Error: Round-Robin load balancer not responding on port 8081"
+        echo "Start services with: docker-compose up -d"
+        exit 1
+    fi
+    echo "Both load balancers are running"
+}
+
 DURATION=360
 TARGET_LOAD=1.27
 
@@ -20,7 +43,7 @@ echo "=== ROUND ROBIN TEST (6 Minutes) ==="
 QPS_TARGET=$(echo "$BASELINE * $TARGET_LOAD" | bc -l | awk '{printf "%.0f", $1}')
 echo "QPS: ${QPS_TARGET} req/sec"
 
-hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8081 > ./metrics/dynamic/rr_dyn_kill.txt 2>&1 &
+hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8081 > ./metrics/dynamic/rr_dyn_k1.txt 2>&1 &
 PID_RR=$!
 
 echo "Phase 1 (RR): 3 servers active. Waiting 2 minutes..."
@@ -42,7 +65,7 @@ sleep 10 # Time to let the healthy server come back up and running
 # PREQUAL phase
 echo ""
 echo "=== PREQUAL TEST (6 Minutes) ==="
-hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8080 > ./metrics/dynamic/pq_dyn_kill.txt 2>&1 &
+hey -z ${DURATION}s -q $QPS_TARGET http://localhost:8080 > ./metrics/dynamic/pq_dyn_k1.txt 2>&1 &
 PID_PQ=$!
 
 echo "Phase 1 (PQ): 3 servers active. Waiting 2 minutes..."

@@ -14,8 +14,8 @@ OPTIONS:
     -h, --help              Show this help message
 
 DESCRIPTION:
-    Tests both algorithms simultaneously by running load against both
-    load balancer instances (ports 8080 and 8081) in parallel.
+    Tests both algorithms sequentially by running load against both
+    load balancer instances (ports 8080 and 8081).
 
     Ramps load from 75% to 103% of baseline capacity in multiplicative
     steps of 10/9, matching the methodology from Figure 6 in the paper.
@@ -91,7 +91,7 @@ check_services
 echo ""
 echo "========================================="
 echo "  Side-by-Side Algorithm Comparison"
-echo "  Prequal (8080) vs Round-Robin (8081)"
+echo "  Round-Robin (8081) vs Prequal (8080)"
 echo "========================================="
 echo "Duration per level: ${DURATION}s"
 echo ""
