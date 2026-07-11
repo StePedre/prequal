@@ -63,6 +63,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", lb)
+	mux.HandleFunc("/admin/servers", lb.HandleAdminServers)
 	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{

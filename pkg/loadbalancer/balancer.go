@@ -2,6 +2,7 @@ package loadbalancer
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -167,14 +168,21 @@ func (lb *LoadBalancer) selectServerPrequal() *Server {
 	lb.mutex.RLock()
 	defer lb.mutex.RUnlock()
 
-	if len(lb.servers) == 0 {
+	healthyServers := make([]*Server, 0, len(lb.servers))
+	for _, server := range lb.servers {
+		if server.IsHealthy {
+			healthyServers = append(healthyServers, server)
+		}
+	}
+
+	if len(healthyServers) == 0 {
 		return nil
 	}
 
 	candidates := make([]*Server, 0, lb.config.SelectionChoices)
 	for i := 0; i < lb.config.SelectionChoices; i++ {
-		randomIndex := rand.Intn(len(lb.servers))
-		candidates = append(candidates, lb.servers[randomIndex])
+		randomIndex := rand.Intn(len(healthyServers))
+		candidates = append(candidates, healthyServers[randomIndex])
 	}
 
 	return lb.selectBestCandidate(candidates)
@@ -319,4 +327,70 @@ func (lb *LoadBalancer) forwardRequest(server *Server, w http.ResponseWriter, r 
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+type ServerRequest struct {
+	ID      string `json:"id"`
+	Address string `json:"address"`
+}
+
+func (lb *LoadBalancer) HandleAdminServers(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var req ServerRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		lb.mutex.Lock()
+		for _, s := range lb.servers {
+			if s.ID == req.ID {
+				lb.mutex.Unlock()
+				http.Error(w, "Server already exists", http.StatusConflict)
+				return
+			}
+		}
+
+		newServer := &Server{
+			ID:        req.ID,
+			Address:   req.Address,
+			IsHealthy: false,
+		}
+		lb.servers = append(lb.servers, newServer)
+		lb.mutex.Unlock()
+
+		lb.logger.Info("Added server dynamically", slog.String("id", req.ID))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "Missing id parameter", http.StatusBadRequest)
+			return
+		}
+
+		lb.mutex.Lock()
+		found := false
+		for i, s := range lb.servers {
+			if s.ID == id {
+				lb.servers = append(lb.servers[:i], lb.servers[i+1:]...)
+				found = true
+				break
+			}
+		}
+		lb.mutex.Unlock()
+
+		if !found {
+			http.Error(w, "Server not found", http.StatusNotFound)
+			return
+		}
+
+		lb.logger.Info("Removed server dynamically", slog.String("id", id))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
