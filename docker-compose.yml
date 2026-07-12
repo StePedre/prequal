@@ -90,6 +90,18 @@ services:
       - CPU_LOAD=0
     cpus: 1.0
 
+  server6:
+    build: ./backend
+    container_name: server6
+    profiles: ["dynamic"]
+    networks:
+      - loadbalancer-net
+    environment:
+      - SERVER_ID=server6
+      - PORT=80
+      - CPU_LOAD=60
+    cpus: 1.0
+
   prometheus:
     image: prom/prometheus
     ports:
