@@ -237,6 +237,73 @@ def plot_rif(path, output_path, args=None):
     plt.close(fig)
 
 
+def plot_requests(path, output_path, args=None):
+    df_req = pd.read_csv(path, parse_dates=['Time'])
+    df_req.set_index('Time', inplace=True)
+    
+    cols = df_req.columns.tolist()
+    if len(cols) != 6:
+        print(f"Skipping {path}: expected 6 data columns for requests (3 Prequal + 3 RR)")
+        return
+
+    cols_prequal = cols[0:3]
+    cols_rr = cols[3:6]
+
+    is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
+    
+    if is_manual:
+        base_date = df_req.index[0].strftime('%Y-%m-%d')
+        if args.start:
+            df_req = df_req[df_req.index >= pd.to_datetime(f"{base_date} {args.start}")]
+        if args.end:
+            df_req = df_req[df_req.index <= pd.to_datetime(f"{base_date} {args.end}")]
+    else:
+        rr_active_temp = df_req[cols_rr].sum(axis=1) > 0
+        streak = rr_active_temp.rolling(5).sum()
+        if (streak == 5).any():
+            import numpy as np
+            idx = np.where(streak == 5)[0][0] - 4
+            first_rr_time = df_req.index[idx]
+            df_req = df_req[df_req.index >= first_rr_time]
+            
+        pq_active_temp = df_req[cols_prequal].sum(axis=1) > 0
+        if pq_active_temp.any():
+            import numpy as np
+            last_pq_time = df_req.index[np.where(pq_active_temp)[0][-1]]
+            df_req = df_req[df_req.index <= last_pq_time]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors_rr = ['#d62728', '#ff7f0e', '#bcbd22']
+    colors_prequal = ['#1f77b4', '#17becf', '#2ca02c']
+
+    rr_active = df_req[cols_rr].sum(axis=1) > 0
+    pq_active = df_req[cols_prequal].sum(axis=1) > 0
+
+    for i in range(3):
+        data = df_req[cols_rr[i]]
+        ax.plot(data.index, data, label=f'RR - Server {i+1}', color=colors_rr[i], linewidth=1.0, alpha=0.9)
+
+    for i in range(3):
+        data = df_req[cols_prequal[i]]
+        ax.plot(data.index, data, label=f'Prequal - Server {i+1}', color=colors_prequal[i], linewidth=1.2)
+
+    rr_req = df_req[cols_rr[0]].where(rr_active).dropna()
+    pq_req = df_req[cols_prequal[0]].where(pq_active).dropna()
+    start_t, end_t = draw_combined_backgrounds(ax, rr_req, pq_req, args=args, df_index=df_req.index)
+    
+    if start_t is not None and end_t is not None:
+        ax.set_xlim(left=start_t, right=end_t)
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.set_ylabel('Requests/sec', fontsize=12)
+    ax.set_xlabel('Time', fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close(fig)
+
+
 def collect_input_files(files):
     if files:
         resolved = []
@@ -259,6 +326,7 @@ def collect_input_files(files):
 def classify_files(paths):
     latency_files = []
     rif_files = []
+    req_files = []
     other_files = []
 
     for path in paths:
@@ -269,10 +337,12 @@ def classify_files(paths):
             latency_files.append(path)
         elif 'rif' in name:
             rif_files.append(path)
+        elif 'req' in name:
+            req_files.append(path)
         else:
             other_files.append(path)
 
-    return latency_files, rif_files, other_files
+    return latency_files, rif_files, req_files, other_files
 
 
 def build_output_path(input_path, suffix):
@@ -295,13 +365,13 @@ if __name__ == '__main__':
     os.makedirs(output_dir, exist_ok=True)
 
     input_paths = collect_input_files(args.files)
-    latency_files, rif_files, other_files = classify_files(input_paths)
+    latency_files, rif_files, req_files, other_files = classify_files(input_paths)
 
     if other_files:
-        print(f"Skipping files that cannot be classified as latency or RIF: {other_files}")
+        print(f"Skipping files that cannot be classified as latency, RIF, or requests: {other_files}")
 
-    if not latency_files and not rif_files:
-        print('No latency or RIF files found to plot.')
+    if not latency_files and not rif_files and not req_files:
+        print('No files found to plot.')
         sys.exit(1)
 
     for path in latency_files:
@@ -314,6 +384,12 @@ if __name__ == '__main__':
         print(f"Generating RIF plot from {path}...")
         output_path = build_output_path(path, 'rif_plot')
         plot_rif(path, output_path, args)
+        print(f"Saved: {output_path}")
+
+    for path in req_files:
+        print(f"Generating Requests plot from {path}...")
+        output_path = build_output_path(path, 'requests_plot')
+        plot_requests(path, output_path, args)
         print(f"Saved: {output_path}")
 
     print('Script completed successfully!')
