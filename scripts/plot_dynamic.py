@@ -41,86 +41,94 @@ def read_csv_with_time(path):
     return df
 
 
-def draw_combined_backgrounds(ax, rr_series, pq_series):
+def draw_combined_backgrounds(ax, rr_series, pq_series, args=None, df_index=None):
+    if args and (args.start or args.event1 or args.split or args.event2 or args.end):
+        base_date = df_index[0].strftime('%Y-%m-%d')
+        def parse_arg_time(time_str):
+            if not time_str: return None
+            return pd.to_datetime(f"{base_date} {time_str}")
+            
+        start_t = parse_arg_time(args.start) if args.start else df_index[0]
+        event1_t = parse_arg_time(args.event1)
+        split_t = parse_arg_time(args.split)
+        event2_t = parse_arg_time(args.event2)
+        end_t = parse_arg_time(args.end) if args.end else df_index[-1]
+        
+        if split_t:
+            ax.axvspan(start_t, split_t, facecolor='#ff7f0e', alpha=0.08)
+            ax.axvspan(split_t, end_t, facecolor='#1f77b4', alpha=0.08)
+            ax.axvline(split_t, color='black', linestyle='-', linewidth=2.0, alpha=0.6)
+        else:
+            # Fallback for backgrounds se non metti lo split
+            ax.axvspan(start_t, end_t, facecolor='#eeeeee', alpha=0.3)
+            
+        if event1_t:
+            ax.axvline(event1_t, color='red', linestyle='--', alpha=0.8, linewidth=2.0)
+        if event2_t:
+            ax.axvline(event2_t, color='red', linestyle='--', alpha=0.8, linewidth=2.0)
+            
+        return start_t, end_t
+
     rr_times = rr_series.dropna().index
     pq_times = pq_series.dropna().index
-    if rr_times.empty and pq_times.empty: return
     
-    all_times = sorted(list(set(rr_times) | set(pq_times)))
+    if rr_times.empty or pq_times.empty:
+        return None, None
+        
+    rr_start = rr_times[0]
+    rr_end = rr_times[-1]
     
-    blocks = []
-    start_t = all_times[0]
-    current_algo = 'rr' if start_t in rr_times else 'pq'
+    pq_times = pq_times[pq_times > rr_start]
+    if pq_times.empty:
+        return df_index[0], df_index[-1]
+        
+    pq_start = pq_times[0]
+    pq_end = pq_times[-1]
     
-    for i in range(len(all_times)-1):
-        t1 = all_times[i]
-        t2 = all_times[i+1]
-        
-        algo1 = 'rr' if t1 in rr_times else 'pq'
-        algo2 = 'rr' if t2 in rr_times else 'pq'
-        
-        gap = (t2 - t1).total_seconds()
-        
-        if gap > 60:
-            blocks.append((current_algo, start_t, t1))
-            start_t = t2
-            current_algo = algo2
-        elif algo1 != algo2:
-            midpoint = t1 + (t2 - t1) / 2
-            blocks.append((current_algo, start_t, midpoint))
-            start_t = midpoint
-            current_algo = algo2
+    midpoint = rr_end + (pq_start - rr_end) / 2
+    
+    ax.axvspan(rr_start, midpoint, facecolor='#ff7f0e', alpha=0.08)
+    ax.axvspan(midpoint, pq_end, facecolor='#1f77b4', alpha=0.08)
+    ax.axvline(midpoint, color='black', linestyle='-', linewidth=2.0, alpha=0.6)
             
-    blocks.append((current_algo, start_t, all_times[-1]))
-    
-    if blocks:
-        ax.axvline(blocks[0][1], color='black', linestyle='-', alpha=0.6, linewidth=2.0)
-        for i, (algo, b_start, b_end) in enumerate(blocks):
-            color = '#ff7f0e' if algo == 'rr' else '#1f77b4'
-            ax.axvspan(b_start, b_end, facecolor=color, alpha=0.08)
-            
-            if algo == 'pq':
-                ax.axvline(b_end, color='black', linestyle='-', alpha=0.6, linewidth=2.0)
-            else:
-                ax.axvline(b_end, color='gray', linestyle='--', alpha=0.6, linewidth=1.2)
-
-        loads = ["75%", "83%", "93%", "103%", "114%", "127%", "141%", "157%", "174%"]
-        pair_idx = 0
-        i = 0
-        while i < len(blocks) - 1:
-            if blocks[i][0] == 'rr' and blocks[i+1][0] == 'pq':
-                if pair_idx < len(loads):
-                    mid_time = blocks[i][1] + (blocks[i+1][2] - blocks[i][1]) / 2
-                    ax.text(mid_time, 0.98, f"{loads[pair_idx]} CPU", transform=ax.get_xaxis_transform(),
-                            ha='center', va='top', fontsize=10, fontweight='bold',
-                            bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.2'))
-                    pair_idx += 1
-                i += 2
-            else:
-                i += 1
+    rr_event = rr_start + pd.Timedelta(seconds=120)
+    if rr_event < midpoint:
+        ax.axvline(rr_event, color='red', linestyle='--', alpha=0.8, linewidth=2.0)
                 
-        return blocks[0][1], blocks[-1][2]
-    return None, None
+    pq_event = pq_start + pd.Timedelta(seconds=120)
+    if pq_event < pq_end:
+        ax.axvline(pq_event, color='red', linestyle='--', alpha=0.8, linewidth=2.0)
+                
+    return rr_start, pq_end
 
 
-def plot_latency(path, output_path):
+def plot_latency(path, output_path, args=None):
     df_lat = read_csv_with_time(path)
     
-    if 'roundrobin p50' in df_lat.columns:
-        rr_notna = df_lat['roundrobin p50'].notna()
-        streak = rr_notna.rolling(5).sum()
-        if (streak == 5).any():
-            import numpy as np
-            idx = np.where(streak == 5)[0][0] - 4
-            first_rr_time = df_lat.index[idx]
-            df_lat = df_lat[df_lat.index >= first_rr_time]
-            
-    if 'prequal p50' in df_lat.columns:
-        pq_notna = df_lat['prequal p50'].notna()
-        if pq_notna.any():
-            import numpy as np
-            last_pq_time = df_lat.index[np.where(pq_notna)[0][-1]]
-            df_lat = df_lat[df_lat.index <= last_pq_time]
+    is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
+    
+    if is_manual:
+        base_date = df_lat.index[0].strftime('%Y-%m-%d')
+        if args.start:
+            df_lat = df_lat[df_lat.index >= pd.to_datetime(f"{base_date} {args.start}")]
+        if args.end:
+            df_lat = df_lat[df_lat.index <= pd.to_datetime(f"{base_date} {args.end}")]
+    else:
+        if 'roundrobin p50' in df_lat.columns:
+            rr_notna = df_lat['roundrobin p50'].notna()
+            streak = rr_notna.rolling(5).sum()
+            if (streak == 5).any():
+                import numpy as np
+                idx = np.where(streak == 5)[0][0] - 4
+                first_rr_time = df_lat.index[idx]
+                df_lat = df_lat[df_lat.index >= first_rr_time]
+                
+        if 'prequal p50' in df_lat.columns:
+            pq_notna = df_lat['prequal p50'].notna()
+            if pq_notna.any():
+                import numpy as np
+                last_pq_time = df_lat.index[np.where(pq_notna)[0][-1]]
+                df_lat = df_lat[df_lat.index <= last_pq_time]
 
     fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -143,10 +151,19 @@ def plot_latency(path, output_path):
 
     rr_lat = df_lat['roundrobin p50'] if 'roundrobin p50' in df_lat.columns else pd.Series(dtype=float)
     pq_lat = df_lat['prequal p50'] if 'prequal p50' in df_lat.columns else pd.Series(dtype=float)
-    start_t, end_t = draw_combined_backgrounds(ax, rr_lat, pq_lat)
     
-    if start_t and end_t:
-        ax.set_xlim(start_t, end_t)
+    if not is_manual:
+        if not pq_lat.dropna().empty and not rr_lat.dropna().empty:
+            first_rr_time = rr_lat.dropna().index[0]
+            pq_after_rr = pq_lat.dropna()[pq_lat.dropna().index > first_rr_time]
+            if not pq_after_rr.empty:
+                pq_start_time = pq_after_rr.index[0]
+                rr_lat = rr_lat[rr_lat.index < pq_start_time]
+
+    start_t, end_t = draw_combined_backgrounds(ax, rr_lat, pq_lat, args=args, df_index=df_lat.index)
+    
+    if start_t is not None and end_t is not None:
+        ax.set_xlim(left=start_t, right=end_t)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.set_ylabel('Latency (ms)', fontsize=12)
@@ -158,28 +175,35 @@ def plot_latency(path, output_path):
     plt.close(fig)
 
 
-def plot_rif(path, output_path):
+def plot_rif(path, output_path, args=None):
     df_rif = read_csv_with_time(path)
     cols = list(df_rif.columns)
-    if len(cols) < 6:
-        raise ValueError(f"File {path} does not contain enough RIF columns")
-
+    if len(cols) < 6: return
+    
+    is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
     cols_prequal = cols[0:3]
     cols_rr = cols[3:6]
 
-    rr_active_temp = df_rif[cols_rr].sum(axis=1) > 0
-    streak = rr_active_temp.rolling(5).sum()
-    if (streak == 5).any():
-        import numpy as np
-        idx = np.where(streak == 5)[0][0] - 4
-        first_rr_time = df_rif.index[idx]
-        df_rif = df_rif[df_rif.index >= first_rr_time]
-        
-    pq_active_temp = df_rif[cols_prequal].sum(axis=1) > 0
-    if pq_active_temp.any():
-        import numpy as np
-        last_pq_time = df_rif.index[np.where(pq_active_temp)[0][-1]]
-        df_rif = df_rif[df_rif.index <= last_pq_time]
+    if is_manual:
+        base_date = df_rif.index[0].strftime('%Y-%m-%d')
+        if args.start:
+            df_rif = df_rif[df_rif.index >= pd.to_datetime(f"{base_date} {args.start}")]
+        if args.end:
+            df_rif = df_rif[df_rif.index <= pd.to_datetime(f"{base_date} {args.end}")]
+    else:
+        rr_active_temp = df_rif[cols_rr].sum(axis=1) > 0
+        streak = rr_active_temp.rolling(5).sum()
+        if (streak == 5).any():
+            import numpy as np
+            idx = np.where(streak == 5)[0][0] - 4
+            first_rr_time = df_rif.index[idx]
+            df_rif = df_rif[df_rif.index >= first_rr_time]
+            
+        pq_active_temp = df_rif[cols_prequal].sum(axis=1) > 0
+        if pq_active_temp.any():
+            import numpy as np
+            last_pq_time = df_rif.index[np.where(pq_active_temp)[0][-1]]
+            df_rif = df_rif[df_rif.index <= last_pq_time]
 
     fig, ax = plt.subplots(figsize=(12, 6))
     colors_rr = ['#d62728', '#ff7f0e', '#bcbd22']
@@ -198,13 +222,13 @@ def plot_rif(path, output_path):
 
     rr_rif = df_rif[cols_rr[0]].where(rr_active).dropna()
     pq_rif = df_rif[cols_prequal[0]].where(pq_active).dropna()
-    start_t, end_t = draw_combined_backgrounds(ax, rr_rif, pq_rif)
+    start_t, end_t = draw_combined_backgrounds(ax, rr_rif, pq_rif, args=args, df_index=df_rif.index)
     
-    if start_t and end_t:
-        ax.set_xlim(start_t, end_t)
+    if start_t is not None and end_t is not None:
+        ax.set_xlim(left=start_t, right=end_t)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    ax.set_ylabel('Requests in Flight', fontsize=12)
+    ax.set_ylabel('Requests in flight (RIF)', fontsize=12)
     ax.set_xlabel('Time', fontsize=12)
     ax.grid(True, alpha=0.3)
     ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
@@ -259,6 +283,11 @@ def build_output_path(input_path, suffix):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Plot latency and RIF files.')
     parser.add_argument('files', nargs='*', help='Input files to plot. If omitted, files are read recursively from the metrics directory.')
+    parser.add_argument('--start', help='Start time of the graph (HH:MM:SS)')
+    parser.add_argument('--event1', help='Time of the first kill event (HH:MM:SS)')
+    parser.add_argument('--split', help='Time of the black separator line (HH:MM:SS)')
+    parser.add_argument('--event2', help='Time of the second kill event (HH:MM:SS)')
+    parser.add_argument('--end', help='End time of the graph (HH:MM:SS)')
     args = parser.parse_args()
 
     script_dir = os.path.dirname(__file__)
@@ -278,13 +307,13 @@ if __name__ == '__main__':
     for path in latency_files:
         print(f"Generating latency plot from {path}...")
         output_path = build_output_path(path, 'latency_plot')
-        plot_latency(path, output_path)
+        plot_latency(path, output_path, args)
         print(f"Saved: {output_path}")
 
     for path in rif_files:
         print(f"Generating RIF plot from {path}...")
         output_path = build_output_path(path, 'rif_plot')
-        plot_rif(path, output_path)
+        plot_rif(path, output_path, args)
         print(f"Saved: {output_path}")
 
     print('Script completed successfully!')

@@ -33,3 +33,6 @@ backend/go.sum
 
 # Metrics
 metrics/
+
+# Scripts instructions
+scripts/plot_latency_dynamic_time.txt
