@@ -104,10 +104,6 @@ def draw_combined_backgrounds(ax, rr_series, pq_series, args=None, df_index=None
 
 def plot_latency(path, output_path, args=None):
     df_lat = read_csv_with_time(path)
-    cols = df_lat.columns.tolist()
-    N = len(cols) // 2
-    cols_prequal = cols[0:N]
-    cols_rr = cols[N:]
     
     is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
     
@@ -118,31 +114,48 @@ def plot_latency(path, output_path, args=None):
         if args.end:
             df_lat = df_lat[df_lat.index <= pd.to_datetime(f"{base_date} {args.end}")]
     else:
-        if N > 0:
-            rr_notna = df_lat[cols_rr[0]].notna()
+        if 'roundrobin p50' in df_lat.columns:
+            rr_notna = df_lat['roundrobin p50'].notna()
             streak = rr_notna.rolling(5).sum()
             if (streak == 5).any():
+                import numpy as np
                 idx = np.where(streak == 5)[0][0] - 4
                 first_rr_time = df_lat.index[idx]
                 df_lat = df_lat[df_lat.index >= first_rr_time]
                 
-            pq_notna = df_lat[cols_prequal[0]].notna()
+        if 'prequal p50' in df_lat.columns:
+            pq_notna = df_lat['prequal p50'].notna()
             if pq_notna.any():
+                import numpy as np
                 last_pq_time = df_lat.index[np.where(pq_notna)[0][-1]]
                 df_lat = df_lat[df_lat.index <= last_pq_time]
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    colors_rr = ['#d62728', '#ff7f0e', '#bcbd22', '#8c564b', '#e377c2', '#ff9896', '#c5b0d5', '#c49c94', '#f7b6d2', '#dbdb8d']
-    colors_prequal = ['#1f77b4', '#17becf', '#2ca02c', '#9467bd', '#7f7f7f', '#aec7e8', '#98df8a', '#ffbb78', '#c5b0d5', '#c49c94']
 
-    for i in range(N):
-        ax.plot(df_lat.index, df_lat[cols_rr[i]], label=f'RR - Server {i+1}', color=colors_rr[i % len(colors_rr)], linewidth=1.2)
+    c_p50 = '#2ca02c'
+    c_p90 = '#1f77b4'
+    c_p99 = '#daa520'
+    c_p999 = '#d62728'
 
-    for i in range(N):
-        ax.plot(df_lat.index, df_lat[cols_prequal[i]], label=f'Prequal - Server {i+1}', color=colors_prequal[i % len(colors_prequal)], linewidth=1.2)
+    plotted_labels = set()
+    def plot_percentile(col_name, label, color):
+        if col_name in df_lat.columns:
+            legend_label = label if label not in plotted_labels else '_nolegend_'
+            ax.plot(df_lat.index, df_lat[col_name], label=legend_label, color=color, linewidth=1.2)
+            plotted_labels.add(label)
 
-    rr_lat = df_lat[cols_rr[0]] if len(cols_rr) > 0 else pd.Series(dtype=float)
-    pq_lat = df_lat[cols_prequal[0]] if len(cols_prequal) > 0 else pd.Series(dtype=float)
+    plot_percentile('roundrobin p50', 'p50', c_p50)
+    plot_percentile('roundrobin p90', 'p90', c_p90)
+    plot_percentile('roundrobin p99', 'p99', c_p99)
+    plot_percentile('roundrobin p99.9', 'p99.9', c_p999)
+
+    plot_percentile('prequal p50', 'p50', c_p50)
+    plot_percentile('prequal p90', 'p90', c_p90)
+    plot_percentile('prequal p99', 'p99', c_p99)
+    plot_percentile('prequal p99.9', 'p99.9', c_p999)
+
+    rr_lat = df_lat['roundrobin p50'].dropna() if 'roundrobin p50' in df_lat.columns else pd.Series(dtype=float)
+    pq_lat = df_lat['prequal p50'].dropna() if 'prequal p50' in df_lat.columns else pd.Series(dtype=float)
     
     start_t, end_t = draw_combined_backgrounds(ax, rr_lat, pq_lat, args=args, df_index=df_lat.index)
     
@@ -163,8 +176,8 @@ def plot_rif(path, output_path, args=None):
     df_rif = read_csv_with_time(path)
     cols = list(df_rif.columns)
     N = len(cols) // 2
-    cols_prequal = cols[0:N]
-    cols_rr = cols[N:]
+    cols_rr = cols[0:N]
+    cols_prequal = cols[N:]
     
     is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
 
@@ -233,8 +246,8 @@ def plot_requests(path, output_path, args=None):
         return
 
     N = len(cols) // 2
-    cols_prequal = cols[0:N]
-    cols_rr = cols[N:]
+    cols_rr = cols[0:N]
+    cols_prequal = cols[N:]
 
     is_manual = args and (args.start or args.event1 or args.split or args.event2 or args.end)
     
