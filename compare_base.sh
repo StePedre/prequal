@@ -125,14 +125,14 @@ for i in "${!LEVELS[@]}"; do
     echo "1/2: Testing Round-Robin..."
     hey -z ${DURATION}s -q $qps http://localhost:8081 > ./metrics/base/rr_base_${i}.txt 2>&1
 
-    echo "Waiting 5 seconds before switching..."
-    sleep 5
+    echo "Waiting 30 seconds before switching..."
+    sleep 30
 
     echo "2/2: Testing Prequal..."
     hey -z ${DURATION}s -q $qps http://localhost:8080 > ./metrics/base/pq_base_${i}.txt 2>&1
 
-    echo "Waiting 5 seconds before next level..."
-    sleep 5
+    echo "Waiting 30 seconds before next level..."
+    sleep 30
 
     echo ""
     echo "--- Round-Robin Results ---"
